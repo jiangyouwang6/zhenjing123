@@ -59,18 +59,14 @@ jobs:
 
       - name: Clone source and update feeds
         run: |
-          # 优先 git clone；大仓库经 git 协议偶发中断，失败则改用 codeload zip 下载
-          if git clone --depth=1 --branch rework-24.10 \
-              https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git openwrt 2>/dev/null; then
-            echo "source cloned via git"
-          else
-            echo "git clone failed, falling back to codeload zip download"
-            curl -sL --retry 3 --connect-timeout 20 -o openwrt-src.zip \
-              "https://codeload.github.com/chasey-dev/immortalwrt-mt798x-rebase/zip/refs/heads/rework-24.10"
-            unzip -q openwrt-src.zip
-            mv immortalwrt-mt798x-rebase-rework-24.10 openwrt
-            echo "source downloaded via codeload zip"
-          fi
+          # 大仓库经 git 协议在 runner 上偶发中断，直接用 codeload zip 下载（稳定）
+          echo "downloading source via codeload zip ..."
+          curl -sL --retry 3 --connect-timeout 20 -o openwrt-src.zip \
+            "https://codeload.github.com/chasey-dev/immortalwrt-mt798x-rebase/zip/refs/heads/rework-24.10"
+          unzip -q openwrt-src.zip
+          # 清理可能残留的目录（如先前失败的 clone 残留），避免 mv 嵌套
+          rm -rf openwrt
+          mv immortalwrt-mt798x-rebase-rework-24.10 openwrt
           [ -d openwrt/target ] || { echo "ERROR: source not available"; exit 1; }
           cd openwrt
           ./scripts/feeds update -a
