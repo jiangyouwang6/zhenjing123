@@ -59,8 +59,15 @@ jobs:
 
       - name: Clone source and update feeds
         run: |
-          git clone --depth=1 --branch rework-24.10 \
-            https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git openwrt
+          # git clone 偶发网络失败，最多重试 3 次
+          for i in 1 2 3; do
+            echo "clone attempt $i/3 ..."
+            git clone --depth=1 --branch rework-24.10 \
+              https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git openwrt && break
+            echo "clone attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          [ -d openwrt/.git ] || { echo "ERROR: clone failed after retries"; exit 1; }
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
@@ -128,10 +135,15 @@ jobs:
       - name: Extract error summary (on failure)
         if: failure()
         run: |
-          echo "===== ERROR SUMMARY (last error lines) ====="
-          grep -n -E "Error [0-9]|ERROR|error:|make\[[0-9]+\].*\*\*\*|failed|FAILED" ../build.log | tail -40
-          echo "===== TAIL OF BUILD LOG ====="
-          tail -60 ../build.log
+          if [ -f ../build.log ]; then
+            echo "===== ERROR SUMMARY (last error lines) ====="
+            grep -n -E "Error [0-9]|ERROR|error:|make\[[0-9]+\].*\*\*\*|failed|FAILED" ../build.log | tail -40
+            echo "===== TAIL OF BUILD LOG ====="
+            tail -60 ../build.log
+          else
+            echo "no build.log found (build did not reach make stage)"
+            exit 0
+          fi
 
       - name: Package firmware artifacts
         run: |
