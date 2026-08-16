@@ -133,12 +133,20 @@ jobs:
           echo "===== TAIL OF BUILD LOG ====="
           tail -60 ../build.log
 
+      - name: Package firmware artifacts
+        run: |
+          mkdir -p firmware
+          cd openwrt/bin/targets/mediatek/filogic/
+          cp xiaomi_mi-router-ax3000t* sha256sums "$GITHUB_WORKSPACE/firmware/" 2>/dev/null || true
+          cd "$GITHUB_WORKSPACE"
+          ls -la firmware/
+
       - name: Upload firmware
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: redmi-ax3000t-openwrt-24.10
           path: |
-            openwrt/bin/targets/mediatek/filogic/
+            firmware/
             build.log
           if-no-files-found: warn
