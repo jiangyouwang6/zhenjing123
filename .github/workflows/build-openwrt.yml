@@ -85,6 +85,15 @@ jobs:
           set -o pipefail
           make -j$(nproc) V=s 2>&1 | tee ../build.log
 
+      # 编译失败时，自动提取错误摘要输出到工作流顶部，便于快速定位
+      - name: Extract error summary (on failure)
+        if: failure()
+        run: |
+          echo "===== ERROR SUMMARY (last error lines) ====="
+          grep -n -E "Error [0-9]|ERROR|error:|make\[[0-9]+\].*\*\*\*|failed|FAILED" ../build.log | tail -40
+          echo "===== TAIL OF BUILD LOG ====="
+          tail -60 ../build.log
+
       - name: Upload firmware
         if: always()
         uses: actions/upload-artifact@v4
