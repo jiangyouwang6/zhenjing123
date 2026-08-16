@@ -24,13 +24,16 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache
           df -h
 
-      # 增加 4GB swap，防止内存不足
+      # 增加 swap（可选，失败不阻塞编译；7GB 内存编译 OpenWrt 足够）
       - name: Add swap
         run: |
-          sudo fallocate -l 4G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          free -h
+          if ! swapon --show | grep -q swapfile; then
+            sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none 2>/dev/null || true
+            sudo chmod 600 /swapfile 2>/dev/null || true
+            sudo mkswap /swapfile 2>/dev/null && sudo swapon /swapfile 2>/dev/null && echo "swap enabled" || echo "swap skipped (not critical)"
+          fi
+          free -h
 
       - name: Install build dependencies
         run: |
