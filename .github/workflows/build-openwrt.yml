@@ -59,15 +59,19 @@ jobs:
 
       - name: Clone source and update feeds
         run: |
-          # git clone 偶发网络失败，最多重试 3 次
-          for i in 1 2 3; do
-            echo "clone attempt $i/3 ..."
-            git clone --depth=1 --branch rework-24.10 \
-              https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git openwrt && break
-            echo "clone attempt $i failed, retrying in 15s..."
-            sleep 15
-          done
-          [ -d openwrt/.git ] || { echo "ERROR: clone failed after retries"; exit 1; }
+          # 优先 git clone；大仓库经 git 协议偶发中断，失败则改用 codeload zip 下载
+          if git clone --depth=1 --branch rework-24.10 \
+              https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git openwrt 2>/dev/null; then
+            echo "source cloned via git"
+          else
+            echo "git clone failed, falling back to codeload zip download"
+            curl -sL --retry 3 --connect-timeout 20 -o openwrt-src.zip \
+              "https://codeload.github.com/chasey-dev/immortalwrt-mt798x-rebase/zip/refs/heads/rework-24.10"
+            unzip -q openwrt-src.zip
+            mv immortalwrt-mt798x-rebase-rework-24.10 openwrt
+            echo "source downloaded via codeload zip"
+          fi
+          [ -d openwrt/target ] || { echo "ERROR: source not available"; exit 1; }
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
