@@ -1,0 +1,93 @@
+name: Build OpenWrt for Redmi AX3000T
+
+# 触发方式：
+#  1. 推送到 main / master 分支
+#  2. 在 GitHub 仓库页面 Actions 标签页手动点 "Run workflow"
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      # 检出本仓库（包含 config/、files/、.github/）
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 释放 runner 磁盘空间（OpenWrt 全量编译需要 ~10GB）
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache
+          df -h
+
+      # 增加 4GB swap，防止内存不足
+      - name: Add swap
+        run: |
+          sudo fallocate -l 4G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison \
+            build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex \
+            gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool \
+            lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev \
+            libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf \
+            python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync \
+            scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd \
+            zlib1g-dev zstd
+
+      # 下载源码缓存（dl/ 目录），二次编译可复用
+      - name: Cache OpenWrt downloads
+        uses: actions/cache@v4
+        with:
+          path: openwrt/dl
+          key: openwrt-dl-${{ github.run_id }}
+          restore-keys: |
+            openwrt-dl-
+
+      - name: Clone source and update feeds
+        run: |
+          git clone --depth=1 --branch rework-24.10 \
+            https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git openwrt
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      # 应用定制配置（闭源驱动 + 中文界面，去插件）
+      - name: Apply config
+        run: |
+          cp config/ax3000t.config openwrt/.config
+          cd openwrt
+          make defconfig
+
+      # 内置功率解锁工具到固件 /usr/bin/txpwr.sh
+      - name: Install txpwr tool into firmware
+        run: |
+          mkdir -p openwrt/files/usr/bin
+          cp files/usr/bin/txpwr.sh openwrt/files/usr/bin/txpwr.sh
+          chmod +x openwrt/files/usr/bin/txpwr.sh
+
+      - name: Build firmware
+        run: |
+          cd openwrt
+          set -o pipefail
+          make -j$(nproc) V=s 2>&1 | tee ../build.log
+
+      - name: Upload firmware
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redmi-ax3000t-openwrt-24.10
+          path: |
+            openwrt/bin/targets/mediatek/filogic/
+            build.log
+          if-no-files-found: warn
