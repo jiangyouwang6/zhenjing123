@@ -65,6 +65,45 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      # 下载 MTK 闭源源码包（conninfra/warp/mt_wifi/datconf）
+      # 这些包没有 PKG_SOURCE_URL，源码托管在 hanwckf/immortalwrt-mt798x 的 dl/ 目录
+      # 首选 git 稀疏克隆（有完整性校验）；失败则 raw 下载并校验文件大小
+      - name: Download closed-source packages
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/openwrt/dl"
+          if git clone --depth=1 --filter=blob:none --sparse --branch openwrt-21.02 \
+              https://github.com/hanwckf/immortalwrt-mt798x.git /tmp/mtk-dl 2>/dev/null; then
+            cd /tmp/mtk-dl
+            git sparse-checkout set dl
+            cp dl/* "$GITHUB_WORKSPACE/openwrt/dl/"
+            echo "closed-source packages fetched via sparse clone"
+          else
+            echo "sparse clone failed, falling back to raw download with size check"
+            declare -A sizes=(
+              [mt79xx_conninfra_20231229-f2fa25.tar.xz]=49228
+              [mt79xx_20220907-8b55f5.tar.xz]=18009876
+              [mt79xx_20231229-4012a0.tar.xz]=17740332
+              [mt79xx_20250408-705eb4.tar.xz]=18150972
+              [warp_20221209-3e6ae1-src.tar.xz]=309700
+              [warp_20231229-5f71ec.tar.xz]=310956
+              [warp_20250408-5f71ec.tar.xz]=312772
+              [datconf-6bb733f7.tar.bz2]=12798
+              [datconf-757f9679.tar.bz2]=13114
+            )
+            for f in "${!sizes[@]}"; do
+              curl -sL --retry 3 --connect-timeout 20 -o "$GITHUB_WORKSPACE/openwrt/dl/$f" \
+                "https://raw.githubusercontent.com/hanwckf/immortalwrt-mt798x/openwrt-21.02/dl/$f"
+              actual=$(stat -c%s "$GITHUB_WORKSPACE/openwrt/dl/$f")
+              if [ "$actual" != "${sizes[$f]}" ]; then
+                echo "size mismatch for $f: got $actual, expected ${sizes[$f]}"
+                exit 1
+              fi
+            done
+            echo "closed-source packages fetched via raw download"
+          fi
+          echo "===== dl contents ====="
+          ls -la "$GITHUB_WORKSPACE/openwrt/dl/"
+
       # 应用定制配置（闭源驱动 + 中文界面，去插件）
       - name: Apply config
         run: |
